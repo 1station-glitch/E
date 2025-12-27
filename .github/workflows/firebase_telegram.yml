@@ -1,9 +1,9 @@
-name: Firebase to Telegram Bot
+name: Firebase → Telegram Bot
 
 on:
-  workflow_dispatch:  # لتشغيل يدوي
+  workflow_dispatch:  # تشغيل يدوي
   schedule:
-    - cron: '*/30 * * * *'  # تشغيل كل 30 دقيقة
+    - cron: '*/30 * * * *'  # اختياري للتشغيل كل 30 دقيقة
 
 jobs:
   run-bot:
