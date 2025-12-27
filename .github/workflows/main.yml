@@ -1,10 +1,11 @@
 name: Playwright Test Bot
 
 on:
+  workflow_dispatch:  # هذا يضيف زر تشغيل يدوي
   push:
     branches: [ main ]
   schedule:
-    - cron: '*/30 * * * *'  # كل 30 دقيقة
+    - cron: '*/30 * * * *'  # اختياري، للتشغيل الدوري
 
 jobs:
   build:
