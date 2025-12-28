@@ -167,28 +167,39 @@ for doc in docs:
             page.locator("#merchant_address_form_google_map_toggle").uncheck()
             page.get_by_role("textbox", name="تفاصيل العنوان").fill(district_street)
 
-            # 👇👇 بداية كود التجسس على الخانات 👇👇
+            # 👇👇 بداية كود الفحص الشامل (7 نقاط) 👇👇
             try:
-                # نطلب من البوت قراءة القيم الحالية من داخل المتصفح
+                # 1. قراءة النصوص العادية
                 chk_store = page.locator("#merchant_address_form_name").input_value()
+                chk_branch = page.locator("#merchant_address_form_title").input_value()
                 chk_contact = page.locator("#merchant_address_form_contact_name").input_value()
                 chk_phone = page.locator("#merchant_address_form_phone_number").input_value()
                 chk_details = page.locator("#merchant_address_form_address_details").input_value()
 
-                # إرسال تقرير واحد مفصل إلى تليقرام
+                # 2. قراءة المدينة (نقرأ النص الظاهر في القائمة لأنها ليست خانة كتابة عادية)
+                chk_city = page.locator("#select2-merchant_address_form_city-container").inner_text()
+
+                # 3. قراءة حالة زر الخريطة (هل هو مفعل؟)
+                is_map_checked = page.locator("#merchant_address_form_google_map_toggle").is_checked()
+                map_status = "✅ مفعل (مفتوح)" if is_map_checked else "❎ مغلق (وهذا الصح)"
+
+                # إرسال التقرير الكامل
                 debug_msg = (
-                    f"🕵️ <b>فحص تعبئة البيانات (قبل الحفظ):</b>\n"
+                    f"🕵️ <b>تقرير الفحص الشامل:</b>\n"
                     f"1️⃣ المتجر: {chk_store}\n"
-                    f"2️⃣ المسؤول: {chk_contact}\n"
-                    f"3️⃣ الجوال: {chk_phone}\n"
-                    f"4️⃣ العنوان: {chk_details}"
+                    f"2️⃣ رمز الفرع: {chk_branch}\n"
+                    f"3️⃣ المسؤول: {chk_contact}\n"
+                    f"4️⃣ الجوال: {chk_phone}\n"
+                    f"5️⃣ المدينة: {chk_city}\n"
+                    f"6️⃣ زر الخريطة: {map_status}\n"
+                    f"7️⃣ العنوان: {chk_details}"
                 )
                 notify(debug_msg)
-                print("✅ تم إرسال تقرير الفحص.")
+                print("✅ تم إرسال تقرير الفحص الكامل.")
 
             except Exception as e:
                 notify(f"⚠️ فشل قراءة الخانات: {e}")
-            # 👆👆 نهاية كود التجسس 👇👇
+            # 👆👆 نهاية كود الفحص 👇👇
             # الضغط على إرسال
             page.get_by_role("button", name="إرسال").click()
             
