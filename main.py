@@ -194,9 +194,31 @@ for doc in docs_list:
             page.get_by_role("textbox", name="تفاصيل العنوان").fill(district_street)
 
             # حفظ
-            page.get_by_role("button", name="إرسال").click()
-            page.wait_for_timeout(4000)
+            
+            print("   💾 جاري ضغط زر الحفظ...")
+            page.locator("#address_form_btn").click()
+
+            try:
+                # ⏳ زدنا الوقت إلى 60000 (دقيقة كاملة)
+                # هذا لا يعني أنه سينتظر دقيقة، بل سينتظر "بحد أقصى" دقيقة.
+                # بمجرد ما تختفي النافذة (ولو بعد ثانية) سيكمل فوراً.
+                page.wait_for_selector("#exampleModal", state="hidden", timeout=60000)
+
+                # ✅ إذا اختفت النافذة (يعني قبل البيانات)
+                doc_ref.update({"status": "done"})
+                notify(f"✅ تم الاضافة\nالمتجر: {store_name}")
+                print("   ✅ النتيجة: تم الاضافة (اختفت النافذة).")
+
+            except Exception as e:
+                # ❌ إذا مرت دقيقة كاملة والنافذة لسه موجودة (معناها فيه خطأ أحمر طالع في الموقع)
+                notify(f"❌ لم تتم الاضافة\nالمتجر: {store_name}\n(النافذة ما زالت معلقة)")
+                print(f"   ❌ النتيجة: لم تتم الاضافة (Timeout أو خطأ).")
+            
             browser.close()
+
+    except Exception as e:
+        notify(f"❌ خطأ فني: {e}")
+        print(f"Error: {e}")
 
         # إنهاء
         doc_ref.update({"status": "done"})
