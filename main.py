@@ -32,15 +32,13 @@ def notify(msg):
     except Exception as e:
         print("خطأ في إرسال Telegram:", e)
 
-def normalize_arabic(text):
-    """تنظيف النصوص العربية للمطابقة الذكية (من الملف الثاني)"""
-    if not text: return ""
-    text = str(text)
-    text = re.sub(r'[\u064B-\u065F\u0640]', '', text) # تشكيل
-    text = re.sub(r'[أإآ]', 'ا', text) # ألف
-    text = re.sub(r'ة', 'ه', text) # تاء مربوطة
-    text = re.sub(r'\bال', '', text) # ال التعريف
-    return text.strip()
+# ==== دوال مساعدة (دمجنا normalize_arabic هنا) ====
+def clean_text(text):
+    text = text.strip()
+    text = text.replace("ة", "ه")
+    if text.startswith("ال"):
+        text = text[2:]
+    return text
 
 # ==== جلب الطلبات pending فقط ====
 docs = db.collection("orders").where("status", "==", "pending").stream()
@@ -121,89 +119,40 @@ for doc in docs:
             page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("noon53281@gmail.com")
             page.get_by_placeholder("أدخل رقم الجوال").fill(receiver_phone)
 
-          # ---------------------------------------------------------
-            # 🎯 كود اختيار المدينة (Playwright Select2)
-            # ---------------------------------------------------------
-            print(f"🔍 [مرحلة المدينة] جاري البحث عن: {city}")
-
+            # --- التعامل مع المدينة (منطق mainB الذكي) ---
+            match_success = False
             try:
-                # =========================================================
-                # 🛑 المحددات (Selectors)
-                # =========================================================
+                page.locator("#select2-merchant_address_form_city-container").click()
+                page.get_by_role("searchbox").fill(city)
+                page.wait_for_timeout(1500)
+
+                options = page.locator("li[role='option']").all()
+                target_norm = normalize_arabic(city_region)
+
+                # محاولة المطابقة الأولى
+                for opt in options:
+                    opt_text = opt.inner_text()
+                    if target_norm in normalize_arabic(opt_text) or normalize_arabic(opt_text) in target_norm:
+                        opt.click()
+                        match_success = True
+                        break
                 
-                # 1. زر الضغط (هذا هو الـ ID الخاص بـ City داخل الكلاس اللي انت ارسلته)
-                BTN_CLICK   = "#select2-merchant_address_form_city-container"
-                
-                # 2. خانة الكتابة (دائماً هذا الكلاس في Select2)
-                INPUT_FIELD = ".select2-search__field"
-                
-                # 3. صندوق النتائج (الـ ID اللي انت جبته)
-                RESULTS_BOX = "#select2-merchant_address_form_city-results"
-                
-                # =========================================================
-
-                # 1. فتح القائمة
-                print(f"   👆 الضغط لفتح القائمة...")
-                # نستخدم force=True عشان يضغط حتى لو العنصر مغطى بحدود شفافة
-                page.locator(BTN_CLICK).click(force=True)
-
-                # 2. الكتابة
-                print(f"   ⌨️ كتابة المدينة: {city}")
-                page.locator(INPUT_FIELD).fill("") 
-                page.locator(INPUT_FIELD).type(city, delay=100)
-
-                # 3. الانتظار (5 ثواني)
-                print("   ⏳ انتظار 5 ثواني...")
-                page.wait_for_timeout(5000)
-
-                # 4. اختيار النتيجة الصحيحة
-                results_container = page.locator(RESULTS_BOX)
-                options = results_container.locator("li").all()
-                
-                if not options:
-                    print("   ⚠️ القائمة فارغة!")
-                else:
-                    found = False
-                    def clean(t): return str(t).replace("أ","ا").replace("إ","ا").replace("ة","ه").strip()
-                    target_city = clean(city)
-                    target_region = clean(region)
-
-                    print(f"   📋 النتائج: {len(options)}")
-
+                # محاولة ثانية بالمدينة فقط إذا فشلت الأولى
+                if not match_success:
+                    city_norm = normalize_arabic(city)
                     for opt in options:
-                        txt = opt.inner_text()
-                        clean_txt = clean(txt)
-
-                        # الشرط: هل المدينة موجودة؟ وهل المنطقة موجودة؟
-                        if target_city in clean_txt and target_region in clean_txt:
-                            print(f"      ✅ لقينا الخيار الصح: {txt}")
+                        if city_norm in normalize_arabic(opt.inner_text()):
                             opt.click()
-                            found = True
+                            match_success = True
                             break
-                    
-                    # إذا ما لقينا المنطقة، نختار المدينة فقط
-                    if not found:
-                        for opt in options:
-                            if target_city in clean(opt.inner_text()):
-                                print(f"      ⚠️ خيار بديل (مدينة فقط): {opt.inner_text()}")
-                                opt.click()
-                                found = True
-                                break
-                    
-                    # اختيار عشوائي للطوارئ
-                    if not found and len(options) > 0:
-                        print("      🎲 اختيار عشوائي.")
-                        options[0].click()
-
+                            
             except Exception as e:
-                print(f"   ❌ خطأ: {e}")
-                try: page.mouse.click(0, 0)
-                except: pass
-            
-            # ---------------------------------------------------------
-            # ---------------------------------------------------------
-            
-            # ---------------------------------------------------------
+                print(f"خطأ في تحديد المدينة: {e}")
+
+            if not match_success:
+                print(f"⚠️ لم يتم العثور على مدينة مطابقة لـ: {city}")
+                # هنا ممكن تختار خيار افتراضي أو تكمل، سأتركه يكمل لكي لا يتوقف البوت
+
             # إكمال وتأكيد (Google Map والتفاصيل)
             page.locator("#merchant_address_form_google_map_toggle").uncheck()
             page.get_by_role("textbox", name="تفاصيل العنوان").fill(district_street)
