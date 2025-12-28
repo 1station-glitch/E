@@ -40,6 +40,16 @@ def clean_text(text):
         text = text[2:]
     return text
 
+def normalize_arabic(text):
+    """تنظيف النصوص العربية للمطابقة الذكية (من الملف الثاني)"""
+    if not text: return ""
+    text = str(text)
+    text = re.sub(r'[\u064B-\u065F\u0640]', '', text) # تشكيل
+    text = re.sub(r'[أإآ]', 'ا', text) # ألف
+    text = re.sub(r'ة', 'ه', text) # تاء مربوطة
+    text = re.sub(r'\bال', '', text) # ال التعريف
+    return text.strip()
+
 # ==== جلب الطلبات pending فقط ====
 docs = db.collection("orders").where("status", "==", "pending").stream()
 
@@ -119,153 +129,50 @@ for doc in docs:
             page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("noon53281@gmail.com")
             page.get_by_placeholder("أدخل رقم الجوال").fill(receiver_phone)
 
-    try:
-    # كود...
-          except Exception as e:
-            print(f"خطأ: {e}")
 
-   import logging
-
-   def select_city_from_select2(page, city_name, region_name=None):
-    """
-    اختيار المدينة من قائمة Select2
-    
-    Args:
-        page: صفحة Playwright
-        city_name: اسم المدينة من Firebase حقل 'city' (مثال: "جدة")
-        region_name: اسم المنطقة من Firebase حقل 'region' (مثال: "مكة المكرمة")
-        
-    Returns:
-        bool: True إذا نجحت العملية، False إذا فشلت
-    """
-    
-    # إعدادات ثابتة للموقع
-    CONTAINER_SELECTOR = "#select2-merchant_address_form_city-container"
-    SEARCH_INPUT_SELECTOR = ".select2-search__field"
-    RESULTS_SELECTOR = "li.select2-results__option"
-    
-    WAIT_AFTER_CLICK = 2
-    WAIT_AFTER_TYPE = 3
-    MAX_RETRIES = 3
-    
-    for attempt in range(MAX_RETRIES):
-        try:
-            logger.info(f"محاولة {attempt + 1}: اختيار المدينة '{city_name}' - المنطقة '{region_name}'")
-            
-            # ════════════════════════════════════════════════════════
-            # الخطوة 1: الضغط على خانة المدينة لفتح Select2
-            # ════════════════════════════════════════════════════════
-            logger.info("► الضغط على خانة المدينة...")
-            page.click(CONTAINER_SELECTOR, timeout=10000)
-            
-            # انتظار بعد الضغط
-            time.sleep(WAIT_AFTER_CLICK)
-            
-            # ════════════════════════════════════════════════════════
-            # الخطوة 2: انتظار ظهور مربع البحث
-            # ════════════════════════════════════════════════════════
-            logger.info("► انتظار ظهور مربع البحث...")
-            search_input = page.locator(SEARCH_INPUT_SELECTOR)
-            search_input.wait_for(state="visible", timeout=10000)
-            
-            # ════════════════════════════════════════════════════════
-            # الخطوة 3: كتابة اسم المدينة
-            # ════════════════════════════════════════════════════════
-            logger.info(f"► كتابة اسم المدينة: {city_name}")
-            search_input.fill(city_name)
-            
-            # انتظار تحميل النتائج
-            time.sleep(WAIT_AFTER_TYPE)
-            
-            # ════════════════════════════════════════════════════════
-            # الخطوة 4: انتظار ظهور قائمة الاقتراحات
-            # ════════════════════════════════════════════════════════
-            logger.info("► انتظار ظهور قائمة الاقتراحات...")
-            page.wait_for_selector(RESULTS_SELECTOR, state="visible", timeout=10000)
-            
-            # ════════════════════════════════════════════════════════
-            # الخطوة 5: البحث عن المدينة في الاقتراحات واختيارها
-            # ════════════════════════════════════════════════════════
-            logger.info("► البحث عن المدينة في قائمة الاقتراحات...")
-            
-            # جلب جميع الخيارات المتاحة
-            options = page.locator(RESULTS_SELECTOR).all()
-            city_found = False
-            
-            # البحث في كل خيار
-            for index, option in enumerate(options):
-                option_text = option.inner_text().strip()
-                logger.info(f"  • فحص الخيار {index + 1}: '{option_text}'")
+            # --- التعامل مع المدينة ---
+            match_success = False
+            try:
+                # الضغط على خانة المدينة
+                page.locator("#select2-merchant_address_form_city-container").click()
+                page.wait_for_timeout(2000)
                 
-                # مقارنة اسم المدينة (غير حساس لحالة الأحرف)
-                if city_name.lower() in option_text.lower():
-                    # إذا كان فيه اسم منطقة، تأكد إنها مطابقة
-                    if region_name:
-                        if region_name.lower() in option_text.lower():
-                            logger.info(f"✓ تم العثور على المدينة مع المنطقة: '{option_text}'")
-                            option.click()
-                            city_found = True
-                            break
-                        else:
-                            logger.info(f"  ⤷ المدينة موجودة لكن المنطقة غير مطابقة، متابعة البحث...")
-                            continue
-                    else:
-                        # إذا ما فيه اسم منطقة، اختر أول تطابق
-                        logger.info(f"✓ تم العثور على المدينة: '{option_text}'")
-                        option.click()
-                        city_found = True
+                # كتابة اسم المدينة في مربع البحث
+                page.locator(".select2-search__field").fill(city)
+                page.wait_for_timeout(3000)
+                
+                # انتظار ظهور قائمة الخيارات
+                page.wait_for_selector("li.select2-results__option", state="visible", timeout=10000)
+                
+                # جلب جميع الخيارات
+                options = page.locator("li.select2-results__option").all()
+                
+                # البحث عن المدينة مع المنطقة
+                target_norm = normalize_arabic(city_region)
+                for opt in options:
+                    opt_text = opt.inner_text()
+                    if target_norm in normalize_arabic(opt_text) or normalize_arabic(opt_text) in target_norm:
+                        opt.click()
+                        match_success = True
+                        print(f"✓ تم اختيار: {opt_text}")
                         break
-            
-            # إذا لم يتم العثور على المدينة، اختر أول نتيجة
-            if not city_found:
-                logger.warning("⚠ لم يتم العثور على تطابق دقيق، اختيار أول نتيجة...")
-                page.click(f"{RESULTS_SELECTOR}:first-child")
-            
-            # انتظار قصير بعد الاختيار
-            time.sleep(1)
-            
-            logger.info("✓ تم اختيار المدينة بنجاح!")
-            return True
-            
-        except Exception as e:
-            logger.error(f"✗ خطأ في المحاولة {attempt + 1}: {e}")
-            
-            # إعادة المحاولة إذا لم تكن المحاولة الأخيرة
-            if attempt < MAX_RETRIES - 1:
-                logger.info(f"⟳ إعادة المحاولة بعد ثانيتين...")
-                time.sleep(2)
-            else:
-                logger.error("✗ فشلت جميع المحاولات")
-                return False
-    
-    return False
+                
+                # إذا ما لقى مطابقة، جرب بالمدينة فقط
+                if not match_success:
+                    city_norm = normalize_arabic(city)
+                    for opt in options:
+                        if city_norm in normalize_arabic(opt.inner_text()):
+                            opt.click()
+                            match_success = True
+                            print(f"✓ تم اختيار: {opt.inner_text()}")
+                            break
+                            
+            except Exception as e:
+                print(f"خطأ في تحديد المدينة: {e}")
 
-
-# ════════════════════════════════════════════════════════
-# مثال على الاستخدام في كودك
-# ════════════════════════════════════════════════════════
-
-"""
-# في الكود الموجود عندك:
-
-# 1. جلب البيانات من Firebase
-doc = db.collection('orders').document('order_id').get()
-data = doc.to_dict()
-
-# 2. استخراج المدينة والمنطقة
-city_name = data['city']        # مثلاً: "جدة"
-region_name = data['region']    # مثلاً: "مكة المكرمة"
-
-# 3. استخدام الدالة
-success = select_city_from_select2(page, city_name, region_name)
-
-if success:
-    print("✓ تم اختيار المدينة بنجاح!")
-    # أكمل باقي الخطوات...
-else:
-    print("✗ فشل اختيار المدينة")
-"""
-
+            if not match_success:
+                print(f"⚠️ لم يتم العثور على مدينة مطابقة لـ: {city}")
+                
             # إكمال وتأكيد (Google Map والتفاصيل)
             page.locator("#merchant_address_form_google_map_toggle").uncheck()
             page.get_by_role("textbox", name="تفاصيل العنوان").fill(district_street)
