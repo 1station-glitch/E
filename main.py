@@ -110,7 +110,16 @@ for doc in docs_list:
             used_codes.add(branch_code)
             break
 
-    notify(f"📦 [Bot] طلب جديد: {store_name}\n📍 {city} - {region}")
+    # تنسيق الرسالة
+    msg = (
+        f"🚨 متجر جديد: {store_name}\n"
+        f"📱 الرقم: {receiver_phone}\n"
+        f"📍 المدينة - المنطقة: {city} - {region}\n"
+        f"🏘️ الحي - الشارع: {district} - {street}"
+    )
+
+    # إرسال
+    notify(msg)
 
     try:
         with sync_playwright() as p:
