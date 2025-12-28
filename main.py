@@ -1,240 +1,191 @@
 import os
-import json
 import random
 import requests
+import re
 import time
 import firebase_admin
 from firebase_admin import credentials, firestore
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-# ======================================================
-# 🌍 1. إعدادات البيئة (GitHub vs Local)
-# ======================================================
-IS_GITHUB = "GITHUB_ACTIONS" in os.environ
+# ==========================================
+# ⚙️ إعدادات المستخدم
+# ==========================================
+BOT_TOKEN = "8224827964:AAGpO4HKau6MDDOHPxyBC0Lkp9hiGYCfS3M" 
+CHAT_ID = "5278948260"
+FIREBASE_KEY_FILE = "firebase_credinalt.json"
+# ==========================================
 
-# إعدادات Telegram
-BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN') # تأكد أن هذا المتغير موجود في Secrets أو Environment
-CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+# 1️⃣ الاتصال بـ Firebase
+if not firebase_admin._apps:
+    try:
+        cred = credentials.Certificate(FIREBASE_KEY_FILE)
+        firebase_admin.initialize_app(cred)
+        print("✅ تم الاتصال بقاعدة بيانات Firebase بنجاح.")
+    except FileNotFoundError:
+        print(f"❌ خطأ: لم يتم العثور على ملف {FIREBASE_KEY_FILE}")
+        print("تأكد أن الملف موجود في نفس المجلد مع الكود.")
+        exit()
 
-# دالة الإشعار
+db = firestore.client()
+
+# 2️⃣ دالة إرسال تلقرام
 def notify(msg):
-    if not BOT_TOKEN or not CHAT_ID:
-        print("⚠️ إعدادات تليقرام غير موجودة!")
+    if BOT_TOKEN == "8224827964:AAGpO4HKau6MDDOHPxyBC0Lkp9hiGYCfS3M":
+        print(f"⚠️ تنبيه محلي: {msg}")
         return
     try:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            data={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}
+            data={"chat_id": CHAT_ID, "text": msg}
         )
     except Exception as e:
-        print(f"⚠️ فشل إرسال تليقرام: {e}")
+        print("خطأ في إرسال Telegram:", e)
 
-# ======================================================
-# 🔐 2. إعداد Firebase (ذكي وهجين)
-# ======================================================
-if not firebase_admin._apps:
-    try:
-        if IS_GITHUB:
-            print("🤖 البيئة: GitHub Actions")
-            # في GitHub: نقرأ محتوى ملف JSON من Secret اسمه FIREBASE_JSON
-            firebase_config = os.environ.get("FIREBASE_JSON")
-            if not firebase_config:
-                raise ValueError("لم يتم العثور على FIREBASE_JSON في Secrets!")
-            cred_info = json.loads(firebase_config)
-            cred = credentials.Certificate(cred_info)
-        else:
-            print("💻 البيئة: جهاز محلي")
-            # في جهازك: نقرأ الملف مباشرة (تأكد أن اسمه serviceAccountKey.json)
-            # أو ضع مسار ملفك هنا
-            local_file = "firebase_credinalt.json" 
-            if os.path.exists(local_file):
-                cred = credentials.Certificate(local_file)
-            else:
-                # خيار بديل لو الملف له اسم ثاني
-                cred = credentials.Certificate("firebase_credentials.json") 
-        
-        firebase_admin.initialize_app(cred)
-        db = firestore.client()
-        print("✅ تم الاتصال بقاعدة البيانات بنجاح.")
-    except Exception as e:
-        print(f"❌ خطأ في إعداد Firebase: {e}")
-        exit(1)
-else:
-    db = firestore.client()
-
-# ======================================================
-# 🛠️ 3. دوال مساعدة
-# ======================================================
-def clean_text(text):
+# 3️⃣ دالة المساعدة في المقارنة فقط (لا تغير النص الأصلي)
+def normalize_arabic(text):
     if not text: return ""
-    return str(text).replace("أ","ا").replace("إ","ا").replace("آ","ا").replace("ة","ه").replace("ي","ى").strip()
+    text = str(text)
+    # هذا التنظيف للمقارنة فقط عشان يلقى المدينة في القائمة
+    text = re.sub(r'[\u064B-\u065F\u0640]', '', text) 
+    text = re.sub(r'[أإآ]', 'ا', text) 
+    text = re.sub(r'ة', 'ه', text) 
+    text = re.sub(r'\bال', '', text) 
+    return text.strip()
 
-# ======================================================
-# 🚀 4. المحرك الرئيسي
-# ======================================================
-def process_orders():
-    print("🔄 جلب الطلبات (pending)...")
-    docs = db.collection("orders").where("status", "==", "pending").stream()
-    docs_list = list(docs)
+# ==========================================
+# 🚀 بداية تشغيل البوت
+# ==========================================
 
-    if not docs_list:
-        print("😴 لا توجد طلبات جديدة.")
-        return
+print("🔄 جاري البحث عن طلبات 'pending'...")
+docs = db.collection("orders").where("status", "==", "pending").stream()
+docs_list = list(docs)
 
-    print(f"📦 وجدنا {len(docs_list)} طلبات.")
+if not docs_list:
+    print("😴 لا توجد طلبات معلقة (Pending) حالياً.")
+else:
+    print(f"📦 تم العثور على {len(docs_list)} طلب/طلبات.")
+
+used_codes = set()
+
+for doc in docs_list:
+    order = doc.to_dict()
+    doc_ref = db.collection("orders").document(doc.id)
+
+    # ==== جمع البيانات (بدون تعديل أو تنظيف) ====
+    # نستخدم strip() فقط لإزالة المسافات الزائدة أول وآخر الكلام إن وجدت
+    store_name = order.get("store_name", "").strip()
+    receiver_name = order.get("receiver_name", "").strip()
+    receiver_phone = order.get("receiver_phone", "").strip()
     
-    # لتجنب تكرار كود الفرع
-    used_codes = set()
+    # البيانات كما هي من الفايربيس
+    city = order.get("city", "").strip()
+    region = order.get("region", "").strip()
+    city_region = f"{city} - {region}"
+    
+    district = order.get("district", "").strip()
+    street = order.get("street", "").strip()
+    district_street = f"{district} - {street}" 
 
-    for doc in docs_list:
-        try:
-            order = doc.to_dict()
-            doc_ref = db.collection("orders").document(doc.id)
+    # توليد رمز فرع
+    while True:
+        branch_code = str(random.randint(10000, 99999))
+        if branch_code not in used_codes:
+            used_codes.add(branch_code)
+            break
 
-            # استخراج البيانات
-            store_name = order.get("store_name", "").strip()
-            receiver_name = order.get("receiver_name", "").strip()
-            receiver_phone = order.get("receiver_phone", "").strip()
-            city = order.get("city", "").strip()
-            region = order.get("region", "").strip()
-            district = order.get("district", "").strip()
-            street = order.get("street", "").strip()
-            district_street = f"{district} - {street}"
+    notify(f"📦 بدء تنفيذ طلب:\nمستودع: {store_name}\nمدينة: {city_region}")
 
-            # توليد كود فرع فريد
-            while True:
-                branch_code = str(random.randint(10000, 99999))
-                if branch_code not in used_codes:
-                    used_codes.add(branch_code)
-                    break
+    try:
+        with sync_playwright() as p:
+            print("🌐 فتح المتصفح...")
+            browser = p.chromium.launch(headless=False, slow_mo=500) 
+            page = browser.new_page()
 
-            # 📩 إرسال إشعار البدء
-            start_msg = (
-                f"🚨 <b>متجر جديد:</b> {store_name}\n"
-                f"📱 <b>الرقم:</b> {receiver_phone}\n"
-                f"📍 <b>المدينة - المنطقة:</b> {city} - {region}\n"
-                f"🏘️ <b>الحي - الشارع:</b> {district_street}"
-            )
-            notify(start_msg)
+            # تسجيل الدخول
+            print(f"🔐 تسجيل دخول للمتجر: {store_name}")
+            page.goto("https://demo.stage.torod.co/ar/login")
+            
+            page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("kook53281@gmail.com")
+            page.get_by_role("textbox", name="Password").fill("Abcd_0504989381")
+            page.get_by_role("button", name="تسجيل دخول").click()
+            
+            page.wait_for_url("**/dashboard", timeout=60000)
+            print("✅ تم الدخول.")
 
-            # تشغيل Playwright
-            with sync_playwright() as p:
-                # في GitHub نستخدم headless=True اجباري، في المحلي اختياري
-                browser = p.chromium.launch(headless=True) 
-                # إعداد حجم الشاشة لتجنب مشاكل العناصر المخفية
-                context = browser.new_context(viewport={'width': 1280, 'height': 800})
-                page = context.new_page()
+            # الانتقال لصفحة العناوين
+            page.goto("https://demo.stage.torod.co/ar/settings/address")
+            page.get_by_role("link", name="+ عنوان جديد").click()
 
-                # 1️⃣ تسجيل الدخول
-                print(f"🔐 تسجيل الدخول للمتجر: {store_name}")
-                page.goto("https://torod.co/ar/login", timeout=60000)
-                page.wait_for_selector("input[type='email']")
-                page.locator("input[type='email']").fill("kook53281@gmail.com")
-                page.locator("input[type='password']").fill("Abcd_0504989381")
-                page.locator("button[type='submit']").click()
-                page.wait_for_url("**/dashboard", timeout=60000)
+            # تعبئة البيانات (تعبئة المتغيرات الخام كما هي)
+            page.get_by_role("textbox", name="اسم المستودع *").fill(store_name)
+            page.get_by_role("textbox", name="رمز الفرع او المستودع").fill(branch_code)
+            page.get_by_role("textbox", name="مسؤول الإتصال *").fill(receiver_name)
+            page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("noon53281@gmail.com")
+            page.get_by_placeholder("أدخل رقم الجوال").fill(receiver_phone)
 
-                # 2️⃣ صفحة العنوان
-                page.goto("https://torod.co/ar/settings/address")
-                page.wait_for_selector("a[href*='address/create']", state="visible")
-                page.locator("a[href*='address/create']").click()
+            # معالجة المدينة
+            match_success = False
+            try:
+                page.locator("#select2-merchant_address_form_city-container").click()
+                # نكتب اسم المدينة كما هو من الفايربيس
+                page.get_by_role("searchbox").fill(city)
+                page.wait_for_timeout(2000)
 
-                # 3️⃣ تعبئة البيانات الأساسية
-                print("📝 تعبئة البيانات...")
-                page.locator("#merchant_address_form_name").fill(store_name)
-                page.locator("#merchant_address_form_title").fill(branch_code)
-                page.locator("#merchant_address_form_contact_name").fill(receiver_name)
-                page.locator("#merchant_address_form_email").fill("noon53281@gmail.com")
-                page.locator("#merchant_address_form_phone_number").fill(receiver_phone)
+                options = page.locator("li[role='option']").all()
+                
+                # نستخدم التطبيع فقط للمقارنة لإيجاد الخيار الصحيح
+                target_norm = normalize_arabic(city_region)
 
-                # ---------------------------------------------------------
-                # 🏙️ 4️⃣ معالجة المدينة (Select2 Logic)
-                # ---------------------------------------------------------
-                print(f"🔍 البحث عن المدينة: {city}")
-                try:
-                    BTN_CLICK   = "#select2-merchant_address_form_city-container"
-                    INPUT_FIELD = ".select2-search__field"
-                    RESULTS_BOX = "#select2-merchant_address_form_city-results"
-
-                    page.locator(BTN_CLICK).click(force=True)
-                    page.locator(INPUT_FIELD).fill("") 
-                    page.locator(INPUT_FIELD).type(city, delay=100) # كتابة بطيئة
-                    
-                    print("   ⏳ انتظار 5 ثواني للنتائج...")
-                    page.wait_for_timeout(5000)
-
-                    results_container = page.locator(RESULTS_BOX)
-                    options = results_container.locator("li").all()
-
-                    found = False
-                    target_city = clean_text(city)
-                    target_region = clean_text(region)
-
-                    if options:
-                        for opt in options:
-                            txt = opt.inner_text()
-                            clean_txt = clean_text(txt)
+                for opt in options:
+                    opt_text = opt.inner_text()
+                    if target_norm in normalize_arabic(opt_text):
+                        opt.click()
+                        match_success = True
+                        break
+                
+                if not match_success:
+                    # محاولة ثانية
+                    city_norm = normalize_arabic(city)
+                    for opt in options:
+                        if city_norm in normalize_arabic(opt.inner_text()):
+                            opt.click()
+                            match_success = True
+                            break
                             
-                            # تطابق: المدينة + المنطقة
-                            if target_city in clean_txt and target_region in clean_txt:
-                                print(f"      ✅ تطابق كامل: {txt}")
-                                opt.click()
-                                found = True
-                                break
-                        
-                        # خطة ب: المدينة فقط
-                        if not found:
-                            for opt in options:
-                                if target_city in clean_text(opt.inner_text()):
-                                    print(f"      ⚠️ تطابق مدينة فقط: {opt.inner_text()}")
-                                    opt.click()
-                                    found = True
-                                    break
-                        
-                        # خطة ج: أول خيار عشوائي
-                        if not found:
-                             print("      🎲 اختيار أول نتيجة متاحة.")
-                             options[0].click()
-                    else:
-                        print("❌ القائمة فارغة!")
+            except Exception as e:
+                print(f"⚠️ مشكلة في قائمة المدن: {e}")
 
-                except Exception as e:
-                    print(f"❌ خطأ في القائمة: {e}")
-                    try: page.mouse.click(0,0)
-                    except: pass
+            if not match_success:
+                print(f"⚠️ لم يتم العثور على المدينة بدقة: {city}")
+
+            # إكمال وتأكيد
+            if page.locator("#merchant_address_form_google_map_toggle").is_checked():
+                page.locator("#merchant_address_form_google_map_toggle").uncheck()
                 
-                # إغلاق الخريطة وتكملة العنوان
-                if page.locator("#merchant_address_form_google_map_toggle").is_visible():
-                     if page.locator("#merchant_address_form_google_map_toggle").is_checked():
-                        page.locator("#merchant_address_form_google_map_toggle").click(force=True)
-                
-                page.locator("#merchant_address_form_address_details").fill(district_street)
+            page.get_by_role("textbox", name="تفاصيل العنوان").fill(district_street)
 
-                # ---------------------------------------------------------
-                # 🏁 5️⃣ الحفظ والتحقق (Check Modal Hidden)
-                # ---------------------------------------------------------
-                print("💾 حفظ...")
-                page.locator("#address_form_btn").click()
+            # مراجعة سريعة
+            try:
+                chk_store = page.locator("#merchant_address_form_name").input_value()
+                print(f"👀 مراجعة سريعة: المتجر المدخل هو {chk_store}")
+            except:
+                pass
 
-                try:
-                    # الانتظار حتى تختفي النافذة المنبثقة (بحد أقصى دقيقة)
-                    page.wait_for_selector("#exampleModal", state="hidden", timeout=60000)
-                    
-                    # ✅ نجاح
-                    doc_ref.update({"status": "done"})
-                    notify(f"✅ <b>تمت الإضافة بنجاح</b>\nالمتجر: {store_name}")
-                    print("✅ النتيجة: نجاح.")
+            # حفظ
+            print("💾 جاري الحفظ...")
+            page.get_by_role("button", name="إرسال").click()
+            page.wait_for_timeout(4000)
 
-                except:
-                    # ❌ فشل (النافذة ما زالت موجودة)
-                    notify(f"❌ <b>لم تتم الإضافة (رفض الموقع)</b>\nالمتجر: {store_name}")
-                    print("❌ النتيجة: فشل.")
+            browser.close()
 
-                browser.close()
+        # تحديث الحالة
+        doc_ref.update({"status": "done"})
+        print(f"✅ انتهى الطلب: {store_name}")
+        notify(f"✅ تم التنفيذ: {store_name}")
 
-        except Exception as e:
-            print(f"❌ خطأ عام في الطلب: {e}")
-            notify(f"❌ خطأ فني: {e}")
+    except PlaywrightTimeoutError as e:
+        print(f"⏳ انتهى الوقت (Timeout): {e}")
+    except Exception as e:
+        print(f"❌ خطأ غير متوقع: {e}")
 
-if __name__ == "__main__":
-    process_orders()
+print("🏁 انتهى تشغيل البرنامج.")
