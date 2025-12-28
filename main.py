@@ -129,40 +129,96 @@ for doc in docs:
             page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("noon53281@gmail.com")
             page.get_by_placeholder("أدخل رقم الجوال").fill(receiver_phone)
 
-            # --- التعامل مع المدينة (منطق mainB الذكي) ---
-            match_success = False
-            try:
-                page.locator("#select2-merchant_address_form_city-container").click()
-                page.get_by_role("searchbox").fill(city)
-                page.wait_for_timeout(1500)
+          # ---------------------------------------------------------
+            # 🏙️ كود اختيار المدينة (مطابقة المدينة + المنطقة بصرامة)
+            # ---------------------------------------------------------
+            print(f"🔍 جاري البحث عن: المدينة ({city}) | المنطقة ({region})")
 
-                options = page.locator("li[role='option']").all()
-                target_norm = normalize_arabic(city_region)
+            # 1. دالة لتوليد احتمالات اسم المدينة (عشان لو مكتوبة غلط)
+            def get_variations(text):
+                if not text: return []
+                variations = [text] 
+                # معالجة التاء المربوطة والهاء
+                if text.endswith("ة"): variations.append(text[:-1] + "ه")
+                elif text.endswith("ه"): variations.append(text[:-1] + "ة")
+                # معالجة ال التعريف
+                if text.startswith("ال"):
+                    base = text[2:]
+                    variations.append(base)
+                    if base.endswith("ة"): variations.append(base[:-1] + "ه")
+                    elif base.endswith("ه"): variations.append(base[:-1] + "ة")
+                else:
+                    variations.append("ال" + text)
+                return list(set(variations))
 
-                # محاولة المطابقة الأولى
-                for opt in options:
-                    opt_text = opt.inner_text()
-                    if target_norm in normalize_arabic(opt_text) or normalize_arabic(opt_text) in target_norm:
-                        opt.click()
-                        match_success = True
-                        break
+            search_attempts = get_variations(city)
+            city_found = False
+
+            # 2. حلقة المحاولات
+            for search_term in search_attempts:
+                print(f"   🔄 تجربة البحث بكلمة: {search_term}")
                 
-                # محاولة ثانية بالمدينة فقط إذا فشلت الأولى
-                if not match_success:
-                    city_norm = normalize_arabic(city)
+                try:
+                    # فتح القائمة
+                    page.locator("#select2-merchant_address_form_city-container").click(force=True)
+                    
+                    # كتابة الاسم وانتظار 5 ثواني (كما طلبت)
+                    page.locator(".select2-search__field").fill("") 
+                    page.locator(".select2-search__field").type(search_term, delay=100)
+                    
+                    print("   ⏳ انتظار 5 ثواني لتحميل النتائج...")
+                    page.wait_for_timeout(5000)
+
+                    # جلب النتائج
+                    options = page.locator("li.select2-results__option").all()
+                    
+                    if not options:
+                        print("      ⚠️ القائمة فاضية، نجرب الاسم اللي بعده...")
+                        # نضغط برا عشان نسكر القائمة ونعيد
+                        page.mouse.click(0, 0)
+                        continue
+
+                    # 3. 🕵️ فحص النتائج (الشرط المزدوج: مدينة + منطقة)
+                    target_city_norm = normalize_arabic(city)
+                    target_region_norm = normalize_arabic(region)
+
                     for opt in options:
-                        if city_norm in normalize_arabic(opt.inner_text()):
+                        opt_text = opt.inner_text()       # النص الظاهر في الموقع
+                        opt_norm = normalize_arabic(opt_text) # النص بعد التنظيف
+
+                        # الشرط: هل المدينة موجودة؟ وهل المنطقة موجودة في نفس السطر؟
+                        # مثال: الموقع يعرض "الدمام - المنطقة الشرقية"
+                        # ونحن نبحث عن مدينة "الدمام" ومنطقة "الشرقية"
+                        
+                        match_city = target_city_norm in opt_norm
+                        match_region = target_region_norm in opt_norm
+
+                        if match_city and match_region:
+                            print(f"      ✅ لقينا تطابق كامل (مدينة+منطقة): {opt_text}")
                             opt.click()
-                            match_success = True
+                            city_found = True
                             break
-                            
-            except Exception as e:
-                print(f"خطأ في تحديد المدينة: {e}")
+                        elif match_city:
+                            # لقينا المدينة بس المنطقة ما تطابقت، نسجل ملاحظة ونكمل تدوير
+                            print(f"      👀 لقينا المدينة '{opt_text}' بس المنطقة ما طابقت '{region}'.. نتجاوزها.")
 
-            if not match_success:
-                print(f"⚠️ لم يتم العثور على مدينة مطابقة لـ: {city}")
-                # هنا ممكن تختار خيار افتراضي أو تكمل، سأتركه يكمل لكي لا يتوقف البوت
+                    if city_found:
+                        break # خلاص لقيناه واخترناه
+                    
+                    # إذا خلصنا القائمة وما اخترنا شي، نسكرها عشان المحاولة الجاية
+                    page.mouse.click(0, 0)
 
+                except Exception as e:
+                    print(f"      ❌ خطأ أثناء البحث: {e}")
+                    page.mouse.click(0, 0)
+
+            # 4. لو فشلت كل المحاولات
+            if not city_found:
+                print(f"❌ لم يتم العثور على مدينة: {city} في منطقة: {region}")
+                notify(f"❌ البوت ما لقى المدينة: {city} مع المنطقة: {region}")
+                # (اختياري) هنا ممكن تحط كود يختار أول خيار كاحتياط، أو تتركه فاضي وتخلي البوت يوقف
+            
+            # ---------------------------------------------------------
             # إكمال وتأكيد (Google Map والتفاصيل)
             page.locator("#merchant_address_form_google_map_toggle").uncheck()
             page.get_by_role("textbox", name="تفاصيل العنوان").fill(district_street)
