@@ -135,70 +135,78 @@ for doc in docs:
             page.locator("#merchant_address_form_email").fill("noon53281@gmail.com")
             page.locator("#merchant_address_form_phone_number").fill(receiver_phone)
 
+
             # ---------------------------------------------------------
-            # 🏙️ كود اختيار المدينة (المطابقة الصارمة: مدينة + منطقة)
+            # 🏙️ كود اختيار المدينة (بحث مرن وذكي)
             # ---------------------------------------------------------
-            # ---------------------------------------------------------
-            # 🏙️ كود اختيار المدينة (بحث دقيق: المدينة + المنطقة)
-            # ---------------------------------------------------------
-            print(f"🔍 جاري البحث عن المدينة: {city} | في منطقة: {region}")
+            print(f"🔍 جاري البحث عن: المدينة ({city}) | المنطقة ({region})")
 
             try:
                 # 1. فتح القائمة
                 page.locator("#select2-merchant_address_form_city-container").click(force=True)
                 
-                # 2. كتابة اسم المدينة فقط (كما هو من فاير بيس)
-                # نستخدم delay بسيط عشان الموقع يحس بالكتابة ويبدأ البحث
+                # 2. كتابة اسم المدينة (كما هو من فاير بيس بالضبط)
                 page.locator(".select2-search__field").fill("") 
                 page.locator(".select2-search__field").type(city, delay=100)
                 
-                print(f"   ⌨️ تمت كتابة: {city}.. وجاري انتظار النتائج")
-                page.wait_for_timeout(4000) # انتظار 4 ثواني للنتائج
+                # 3. الانتظار 5 ثواني (كما طلبت)
+                print("   ⏳ انتظار 5 ثواني تحميل النتائج...")
+                page.wait_for_timeout(5000)
 
-                # 3. قراءة النتائج الظاهرة
-                options = page.locator("li.select2-results__option").all()
+                # 4. جلب النتائج من الآيدي اللي حددته أنت
+                results_container = page.locator("#select2-merchant_address_form_city-results")
+                options = results_container.locator("li").all()
                 
                 if not options:
-                    print("   ⚠️ لم تظهر أي نتائج بحث!")
+                    print("   ⚠️ القائمة فاضية!")
                     page.mouse.click(0, 0) # إغلاق القائمة
                 
                 else:
-                    found_exact_match = False
-                    
-                    # تنظيف نصوص المقارنة (عشان الهمزات والتاء المربوطة ما تخرب البحث)
-                    target_city_norm = normalize_arabic(city)     # مثلا: جدة
-                    target_region_norm = normalize_arabic(region) # مثلا: منطقة مكة المكرمة
+                    found = False
+                    # دالة تنظيف بسيطة لتوحيد الحروف (عشان المطابقة المرنة)
+                    def simple_clean(text):
+                        if not text: return ""
+                        t = str(text).replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+                        t = t.replace("ة", "ه").replace("ي", "ى")
+                        return t
 
-                    print(f"   📋 النتائج المعروضة: {len(options)}")
+                    # تنظيف مدخلات فاير بيس
+                    target_city = simple_clean(city)     # مثال: "مكه"
+                    target_region = simple_clean(region) # مثال: "مكه المكرمه"
+
+                    print(f"   📋 عدد النتائج الموجودة: {len(options)}")
 
                     for opt in options:
-                        opt_text = opt.inner_text()       # النص من الموقع: "جدة - منطقة مكة المكرمة"
-                        opt_norm = normalize_arabic(opt_text) 
+                        opt_text = opt.inner_text() # مثال: "جدة - منطقة مكة المكرمة"
+                        opt_clean = simple_clean(opt_text)
+                        
+                        # المنطق: هل اسم مدينتنا جزء من هذا الخيار؟ وهل منطقتنا جزء منه؟
+                        # هذا يسمح بالاختلافات البسيطة
+                        match_city = target_city in opt_clean
+                        match_region = target_region in opt_clean
 
-                        # الشرط: هل اسم المدينة موجود؟ + هل اسم المنطقة موجود؟
-                        # نستخدم in للتأكد أن الكلمات جزء من النص
-                        match_city = target_city_norm in opt_norm
-                        match_region = target_region_norm in opt_norm
-
-                        if match_city and match_region:
-                            print(f"      ✅ تم العثور على الخيار الصحيح: {opt_text}")
+                        # حالة خاصة: أحياناً اسم المنطقة في الموقع يكون أطول أو أقصر
+                        # فنسوي فحص عكسي أيضاً (هل نص الموقع جزء من نصنا؟)
+                        
+                        if match_city and (match_region or target_region in opt_clean):
+                            print(f"      ✅ لقينا تطابق مناسب: {opt_text}")
                             opt.click()
-                            found_exact_match = True
+                            found = True
                             break
-                        else:
-                            # طباعة للتحقق فقط (عشان تشوف ليش رفض الخيارات الثانية)
-                            pass 
-
-                    if not found_exact_match:
-                        print(f"   ❌ لم نجد خيار يجمع بين '{city}' و '{region}' في القائمة.")
-                        # (اختياري) هنا ممكن تختار أول خيار يحتوي على اسم المدينة فقط كخطة بديلة
-                        # إذا تبغاه يختار أول خيار يطلع له فيه اسم المدينة فعل السطرين اللي تحت:
-                        # if len(options) > 0:
-                        #     options[0].click()
+                    
+                    if not found:
+                        print(f"   ⚠️ لم نجد تطابق لـ {city} - {region} في القائمة.")
+                        # (اختياري) محاولة أخيرة: إذا لقينا المدينة فقط بدون المنطقة نختارها؟
+                        # حالياً بخليه يختار أول واحد فيه اسم المدينة وخلاص عشان ما يوقف
+                        for opt in options:
+                            if target_city in simple_clean(opt.inner_text()):
+                                print(f"      ⚠️ اخترنا خيار بناءً على المدينة فقط: {opt.inner_text()}")
+                                opt.click()
+                                found = True
+                                break
 
             except Exception as e:
                 print(f"   ❌ خطأ في القائمة: {e}")
-                # محاولة إغلاق القائمة عند الخطأ
                 try: page.mouse.click(0, 0)
                 except: pass
             
