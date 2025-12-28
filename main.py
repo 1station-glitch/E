@@ -107,17 +107,16 @@ for doc in docs:
             # انتظار الدخول
             page.wait_for_url("**/dashboard", timeout=60000)
 
-            # ==== 🛑 بداية كود الفحص 🛑 ====
-            print(f"📍 الرابط الحالي: {page.url}")
-            page.screenshot(path="debug_status.png") 
+            current_url = page.url
+            print(f"📍 الرابط الحالي: {current_url}")
             
-            if "login" in page.url:
-                print("❌ البوت ما زال في صفحة الدخول! (لم ينجح الدخول)")
-            elif "create" in page.url or "address" in page.url:
-                print("✅ البوت وصل لصفحة العنوان بنجاح!")
+            if "login" in current_url:
+                notify(f"❌ البوت فشل في الدخول!\nما زال في: {current_url}")
+            elif "dashboard" in current_url or "settings" in current_url:
+                notify(f"✅ البوت سجل دخول بنجاح!\nوصل لـ: {current_url}")
             else:
-                print("⚠️ البوت في صفحة غير متوقعة!")
-            # ==== 🛑 نهاية كود الفحص 🛑 ====
+                notify(f"⚠️ البوت في صفحة غير معروفة:\n{current_url}")
+            # 👆👆 ---------------------------------- 👆👆
             # 2️⃣ الانتقال لصفحة العناوين
             page.goto("https://demo.stage.torod.co/ar/settings/address")
             page.get_by_role("link", name="+ عنوان جديد").click()
