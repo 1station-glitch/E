@@ -37,9 +37,9 @@ if not firebase_admin._apps:
         if IS_GITHUB:
             # في قيت هوب: نقرأ المفتاح من النصوص السرية (Secrets)
             # يجب أن تضيف سيكرت باسم FIREBASE_KEY_JSON يحتوي على محتوى الملف
-            json_str = os.getenv("FIREBASE_KEY_JSON")
+            json_str = os.getenv("FIREBASE_JSON")
             if not json_str:
-                raise ValueError("⚠️ لم يتم العثور على Secret باسم FIREBASE_KEY_JSON في إعدادات GitHub")
+                raise ValueError("⚠️ لم يتم العثور على Secret باسم FIREBASE_JSON في إعدادات GitHub")
             
             cred_dict = json.loads(json_str)
             cred = credentials.Certificate(cred_dict)
