@@ -3,13 +3,13 @@ import json
 import tempfile
 import random
 import requests
-import re
+import re  # 🟢 إضافة مكتبة re لمعالجة النصوص
 import time
 import firebase_admin
 from firebase_admin import credentials, firestore
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-# ==== إعداد Firebase ====
+# ==== إعداد Firebase (من الملف الأول - لا تغيير) ====
 firebase_json = os.environ['FIREBASE_JSON']
 with tempfile.NamedTemporaryFile(mode='w+', delete=False) as f:
     f.write(firebase_json)
@@ -19,7 +19,7 @@ cred = credentials.Certificate(firebase_file)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# ==== إعداد Telegram ====
+# ==== إعداد Telegram (من الملف الأول - لا تغيير) ====
 BOT_TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
 CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
 
@@ -32,7 +32,7 @@ def notify(msg):
     except Exception as e:
         print("خطأ في إرسال Telegram:", e)
 
-# ==== دوال مساعدة ====
+# ==== دوال مساعدة (دمجنا normalize_arabic هنا) ====
 def clean_text(text):
     text = text.strip()
     text = text.replace("ة", "ه")
@@ -41,7 +41,7 @@ def clean_text(text):
     return text
 
 def normalize_arabic(text):
-    """تنظيف النصوص العربية للمطابقة الذكية"""
+    """تنظيف النصوص العربية للمطابقة الذكية (من الملف الثاني)"""
     if not text: return ""
     text = str(text)
     text = re.sub(r'[\u064B-\u065F\u0640]', '', text) # تشكيل
@@ -50,26 +50,10 @@ def normalize_arabic(text):
     text = re.sub(r'\bال', '', text) # ال التعريف
     return text.strip()
 
-def get_variations(text):
-    """توليد احتمالات للاسم (مع/بدون ال، تاء/هاء)"""
-    if not text: return []
-    variations = [text] 
-    # معالجة التاء المربوطة والهاء
-    if text.endswith("ة"): variations.append(text[:-1] + "ه")
-    elif text.endswith("ه"): variations.append(text[:-1] + "ة")
-    # معالجة ال التعريف
-    if text.startswith("ال"):
-        base = text[2:]
-        variations.append(base)
-        if base.endswith("ة"): variations.append(base[:-1] + "ه")
-        elif base.endswith("ه"): variations.append(base[:-1] + "ة")
-    else:
-        variations.append("ال" + text)
-    return list(set(variations))
-
-# ==== جلب الطلبات pending ====
+# ==== جلب الطلبات pending فقط ====
 docs = db.collection("orders").where("status", "==", "pending").stream()
 
+# لتخزين الرموز العشوائية المستخدمة
 used_codes = set()
 
 for doc in docs:
@@ -83,58 +67,67 @@ for doc in docs:
     
     city = clean_text(order.get("city", ""))
     region = clean_text(order.get("region", ""))
-    city_region_log = f"{city} - {region}" # للعرض فقط
+    city_region = f"{city} - {region}"
     
     district = order.get("district", "")
     street = order.get("street", "")
     district_street = f"{district} - {street}" 
 
-    # توليد رمز عشوائي
+    # توليد رمز عشوائي جديد لكل طلب
     while True:
         branch_code = str(random.randint(10000, 99999))
         if branch_code not in used_codes:
             used_codes.add(branch_code)
             break
 
-    notify(f"📦 بدء معالجة طلب:\nالمستودع: {store_name}\nالمدينة: {city}\nالمنطقة: {region}")
+    # إشعار Telegram قبل التنفيذ
+    notify(f"📦 بدء تنفيذ طلب جديد:\n"
+           f"المستودع: {store_name}\n"
+           f"المسؤول: {receiver_name}\n"
+           f"المدينة: {city_region}\n"
+           f"رمز الفرع: {branch_code}")
 
-    # ==== بدء Playwright ====
+    # ==== بدء Playwright (تم استبدال المنطق هنا بكود mainB) ====
     try:
         with sync_playwright() as p:
-            # headless=True للسيرفرات
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(viewport={'width': 1280, 'height': 720})
-            page = context.new_page()
+            # ⚠️ هام: headless=True عشان GitHub Actions
+            browser = p.chromium.launch(headless=True) 
+            page = browser.new_page()
 
-            # 1️⃣ تسجيل الدخول
-            print(f"🔐 دخول: {store_name}")
-            page.goto("https://torod.co/ar/login", timeout=60000)
+            # 1️⃣ تسجيل الدخول (باستخدام محددات mainB الذكية)
+            # ملاحظة: أبقيت رابط demo كما هو في الملف الأول
+            print(f"🔐 جاري الدخول للطلب: {store_name}")
+            page.goto("https://demo.stage.torod.co/ar/login")
             
-            page.wait_for_selector("input[type='email']")
-            page.locator("input[type='email']").fill("kook53281@gmail.com")
-            page.locator("input[type='password']").fill("Abcd_0504989381")
-            page.locator("button[type='submit']").click()
+            # استخدام get_by_role بدلاً من XPath (أكثر دقة)
+            page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("kook53281@gmail.com")
+            page.get_by_role("textbox", name="Password").fill("Abcd_0504989381")
+            page.get_by_role("button", name="تسجيل دخول").click()
             
-            # انتظار الانتقال للداشبورد
+            # انتظار الدخول
             page.wait_for_url("**/dashboard", timeout=60000)
 
+            current_url = page.url
+            print(f"📍 الرابط الحالي: {current_url}")
+            
+            if "login" in current_url:
+                notify(f"❌ البوت فشل في الدخول!\nما زال في: {current_url}")
+            elif "dashboard" in current_url or "settings" in current_url:
+                notify(f"✅ البوت سجل دخول بنجاح!\nوصل لـ: {current_url}")
+            else:
+                notify(f"⚠️ البوت في صفحة غير معروفة:\n{current_url}")
+            # 👆👆 ---------------------------------- 👆👆
             # 2️⃣ الانتقال لصفحة العناوين
-            page.goto("https://torod.co/ar/settings/address")
-            
-            # انتظار زر "عنوان جديد"
-            page.wait_for_selector("a[href*='address/create']", state="visible")
-            page.locator("a[href*='address/create']").click()
+            page.goto("https://demo.stage.torod.co/ar/settings/address")
+            page.get_by_role("link", name="+ عنوان جديد").click()
 
-            # 3️⃣ تعبئة البيانات الأساسية
-            print("📝 تعبئة البيانات الأساسية...")
-            page.wait_for_selector("#merchant_address_form_name")
-            
-            page.locator("#merchant_address_form_name").fill(store_name)
-            page.locator("#merchant_address_form_title").fill(branch_code)
-            page.locator("#merchant_address_form_contact_name").fill(receiver_name)
-            page.locator("#merchant_address_form_email").fill("noon53281@gmail.com")
-            page.locator("#merchant_address_form_phone_number").fill(receiver_phone)
-
+            # 3️⃣ تعبئة البيانات (كود mainB)
+            # دمجنا متغيرات الملف الأول مع طريقة إدخال الملف الثاني
+            page.get_by_role("textbox", name="اسم المستودع *").fill(store_name)
+            page.get_by_role("textbox", name="رمز الفرع او المستودع").fill(branch_code)
+            page.get_by_role("textbox", name="مسؤول الإتصال *").fill(receiver_name)
+            page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("noon53281@gmail.com")
+            page.get_by_placeholder("أدخل رقم الجوال").fill(receiver_phone)
 
             # ---------------------------------------------------------
             # 🏙️ كود اختيار المدينة (بحث مرن وذكي)
@@ -211,29 +204,58 @@ for doc in docs:
                 except: pass
             
             # ---------------------------------------------------------
-            # ---------------------------------------------------------
+            # إكمال وتأكيد (Google Map والتفاصيل)
+            page.locator("#merchant_address_form_google_map_toggle").uncheck()
+            page.get_by_role("textbox", name="تفاصيل العنوان").fill(district_street)
 
-            # إغلاق الخريطة وتكملة العنوان
-            if page.locator("#merchant_address_form_google_map_toggle").is_visible():
-                page.locator("#merchant_address_form_google_map_toggle").click(force=True)
+            # 👇👇 بداية كود الفحص الشامل (7 نقاط) 👇👇
+            try:
+                # 1. قراءة النصوص العادية
+                chk_store = page.locator("#merchant_address_form_name").input_value()
+                chk_branch = page.locator("#merchant_address_form_title").input_value()
+                chk_contact = page.locator("#merchant_address_form_contact_name").input_value()
+                chk_phone = page.locator("#merchant_address_form_phone_number").input_value()
+                chk_details = page.locator("#merchant_address_form_address_details").input_value()
 
-            page.locator("#merchant_address_form_address_details").fill(district_street)
+                # 2. قراءة المدينة (نقرأ النص الظاهر في القائمة لأنها ليست خانة كتابة عادية)
+                chk_city = page.locator("#select2-merchant_address_form_city-container").inner_text()
 
-            # الضغط على زر الحفظ
-            page.locator("#address_form_btn").click()
+                # 3. قراءة حالة زر الخريطة (هل هو مفعل؟)
+                is_map_checked = page.locator("#merchant_address_form_google_map_toggle").is_checked()
+                map_status = "✅ مفعل (مفتوح)" if is_map_checked else "❎ مغلق (وهذا الصح)"
+
+                # إرسال التقرير الكامل
+                debug_msg = (
+                    f"🕵️ <b>تقرير الفحص الشامل:</b>\n"
+                    f"1️⃣ المتجر: {chk_store}\n"
+                    f"2️⃣ رمز الفرع: {chk_branch}\n"
+                    f"3️⃣ المسؤول: {chk_contact}\n"
+                    f"4️⃣ الجوال: {chk_phone}\n"
+                    f"5️⃣ المدينة: {chk_city}\n"
+                    f"6️⃣ زر الخريطة: {map_status}\n"
+                    f"7️⃣ العنوان: {chk_details}"
+                )
+                notify(debug_msg)
+                print("✅ تم إرسال تقرير الفحص الكامل.")
+
+            except Exception as e:
+                notify(f"⚠️ فشل قراءة الخانات: {e}")
+            # 👆👆 نهاية كود الفحص 👇👇
+            # الضغط على إرسال
+            page.get_by_role("button", name="إرسال").click()
             
-            # انتظار بسيط للتأكد من الإرسال
-            page.wait_for_timeout(5000)
+            # انتظار قليل للتأكد من الحفظ
+            page.wait_for_timeout(3000)
 
             browser.close()
 
-            # ==== تحديث الحالة بعد التنفيذ ====
-            doc_ref.update({"status": "done"})
-            notify(f"✅ تم تنفيذ الطلب بنجاح: {store_name}")
+        # ==== تحديث الحالة بعد التنفيذ ====
+        doc_ref.update({"status": "done"})
+        notify(f"✅ تم تنفيذ الطلب بنجاح: {store_name} ({city_region})")
 
     except PlaywrightTimeoutError as e:
-        notify(f"⚠️ الوقت انتهى (Timeout) للطلب {store_name}")
-        print("Timeout Error")
+        notify(f"⚠️ Timeout Error للطلب {store_name}: {e}")
+        print("Playwright TimeoutError:", e)
     except Exception as e:
-        notify(f"⚠️ خطأ غير متوقع: {e}")
-        print(f"Error: {e}")
+        notify(f"⚠️ خطأ غير متوقع للطلب {store_name}: {e}")
+        print("Error:", e)
