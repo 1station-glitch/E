@@ -129,79 +129,65 @@ for doc in docs:
             page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("noon53281@gmail.com")
             page.get_by_placeholder("أدخل رقم الجوال").fill(receiver_phone)
 
-            # ---------------------------------------------------------
-            # 🏙️ كود اختيار المدينة (بحث مرن وذكي)
-            # ---------------------------------------------------------
-            print(f"🔍 جاري البحث عن: المدينة ({city}) | المنطقة ({region})")
+          
+            print(f"🔍 جاري البحث.. المدينة: {city} | المنطقة المطلوبة: {region}")
 
             try:
                 # 1. فتح القائمة
                 page.locator("#select2-merchant_address_form_city-container").click(force=True)
                 
-                # 2. كتابة اسم المدينة (كما هو من فاير بيس بالضبط)
-                page.locator(".select2-search__field").fill("") 
+                # 2. كتابة اسم المدينة وانتظار النتائج
+                page.locator(".select2-search__field").fill("")
+                # نكتب ببطء عشان البحث يشتغل صح
                 page.locator(".select2-search__field").type(city, delay=100)
                 
-                # 3. الانتظار 5 ثواني (كما طلبت)
-                print("   ⏳ انتظار 5 ثواني تحميل النتائج...")
+                print("   ⏳ انتظار 5 ثواني (تحميل النتائج)...")
                 page.wait_for_timeout(5000)
 
-                # 4. جلب النتائج من الآيدي اللي حددته أنت
-                results_container = page.locator("#select2-merchant_address_form_city-results")
-                options = results_container.locator("li").all()
+                # 3. جلب جميع الخيارات الظاهرة
+                options = page.locator("li.select2-results__option").all()
                 
                 if not options:
-                    print("   ⚠️ القائمة فاضية!")
+                    print(f"   ❌ القائمة فارغة! لا توجد نتائج لـ {city}")
                     page.mouse.click(0, 0) # إغلاق القائمة
-                
                 else:
-                    found = False
-                    # دالة تنظيف بسيطة لتوحيد الحروف (عشان المطابقة المرنة)
-                    def simple_clean(text):
-                        if not text: return ""
-                        t = str(text).replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-                        t = t.replace("ة", "ه").replace("ي", "ى")
-                        return t
+                    # دالة تنظيف للمقارنة (عشان يتجاهل الفرق بين ة/هـ وأ/ا)
+                    def clean_str(t):
+                        return str(t).replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").replace("ي", "ى")
 
-                    # تنظيف مدخلات فاير بيس
-                    target_city = simple_clean(city)     # مثال: "مكه"
-                    target_region = simple_clean(region) # مثال: "مكه المكرمه"
+                    target_region = clean_str(region) # المنطقة اللي نبيها
+                    found_match = False
 
-                    print(f"   📋 عدد النتائج الموجودة: {len(options)}")
-
-                    for opt in options:
-                        opt_text = opt.inner_text() # مثال: "جدة - منطقة مكة المكرمة"
-                        opt_clean = simple_clean(opt_text)
-                        
-                        # المنطق: هل اسم مدينتنا جزء من هذا الخيار؟ وهل منطقتنا جزء منه؟
-                        # هذا يسمح بالاختلافات البسيطة
-                        match_city = target_city in opt_clean
-                        match_region = target_region in opt_clean
-
-                        # حالة خاصة: أحياناً اسم المنطقة في الموقع يكون أطول أو أقصر
-                        # فنسوي فحص عكسي أيضاً (هل نص الموقع جزء من نصنا؟)
-                        
-                        if match_city and (match_region or target_region in opt_clean):
-                            print(f"      ✅ لقينا تطابق مناسب: {opt_text}")
-                            opt.click()
-                            found = True
-                            break
+                    # --- المحاولة الأولى: البحث عن المنطقة ---
+                    print(f"   📋 النتائج المتاحة: {len(options)}")
                     
-                    if not found:
-                        print(f"   ⚠️ لم نجد تطابق لـ {city} - {region} في القائمة.")
-                        # (اختياري) محاولة أخيرة: إذا لقينا المدينة فقط بدون المنطقة نختارها؟
-                        # حالياً بخليه يختار أول واحد فيه اسم المدينة وخلاص عشان ما يوقف
-                        for opt in options:
-                            if target_city in simple_clean(opt.inner_text()):
-                                print(f"      ⚠️ اخترنا خيار بناءً على المدينة فقط: {opt.inner_text()}")
-                                opt.click()
-                                found = True
-                                break
+                    for opt in options:
+                        opt_text = opt.inner_text()
+                        opt_clean = clean_str(opt_text)
+                        
+                        # هل اسم المنطقة موجود داخل هذا الخيار؟
+                        if target_region in opt_clean:
+                            print(f"      ✅ لقينا تطابق مع المنطقة: {opt_text}")
+                            opt.click()
+                            found_match = True
+                            break # خلاص لقيناه ووقفنا
+                    
+                    # --- المحاولة الثانية: الاختيار العشوائي (إذا ما لقينا المنطقة) ---
+                    if not found_match:
+                        print(f"   ⚠️ لم نجد المنطقة '{region}' في النتائج.. سيتم الاختيار عشوائياً.")
+                        
+                        # اختيار واحد عشوائي من القائمة
+                        import random
+                        random_option = random.choice(options)
+                        print(f"      🎲 تم اختيار عشوائي: {random_option.inner_text()}")
+                        random_option.click()
 
             except Exception as e:
                 print(f"   ❌ خطأ في القائمة: {e}")
                 try: page.mouse.click(0, 0)
                 except: pass
+            
+            # ---------------------------------------------------------
             
             # ---------------------------------------------------------
             # إكمال وتأكيد (Google Map والتفاصيل)
