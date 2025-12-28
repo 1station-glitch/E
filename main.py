@@ -119,13 +119,14 @@ for doc in docs:
             page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("noon53281@gmail.com")
             page.get_by_placeholder("أدخل رقم الجوال").fill(receiver_phone)
 
-            import time
-import logging
+    try:
+    # كود...
+          except Exception as e:
+            print(f"خطأ: {e}")
 
-logger = logging.getLogger(__name__)
+   import logging
 
-
-def select_city_from_select2(page, city_name, region_name=None):
+   def select_city_from_select2(page, city_name, region_name=None):
     """
     اختيار المدينة من قائمة Select2
     
