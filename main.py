@@ -167,6 +167,28 @@ for doc in docs:
             page.locator("#merchant_address_form_google_map_toggle").uncheck()
             page.get_by_role("textbox", name="تفاصيل العنوان").fill(district_street)
 
+            # 👇👇 بداية كود التجسس على الخانات 👇👇
+            try:
+                # نطلب من البوت قراءة القيم الحالية من داخل المتصفح
+                chk_store = page.locator("#merchant_address_form_name").input_value()
+                chk_contact = page.locator("#merchant_address_form_contact_name").input_value()
+                chk_phone = page.locator("#merchant_address_form_phone_number").input_value()
+                chk_details = page.locator("#merchant_address_form_address_details").input_value()
+
+                # إرسال تقرير واحد مفصل إلى تليقرام
+                debug_msg = (
+                    f"🕵️ <b>فحص تعبئة البيانات (قبل الحفظ):</b>\n"
+                    f"1️⃣ المتجر: {chk_store}\n"
+                    f"2️⃣ المسؤول: {chk_contact}\n"
+                    f"3️⃣ الجوال: {chk_phone}\n"
+                    f"4️⃣ العنوان: {chk_details}"
+                )
+                notify(debug_msg)
+                print("✅ تم إرسال تقرير الفحص.")
+
+            except Exception as e:
+                notify(f"⚠️ فشل قراءة الخانات: {e}")
+            # 👆👆 نهاية كود التجسس 👇👇
             # الضغط على إرسال
             page.get_by_role("button", name="إرسال").click()
             
