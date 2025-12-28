@@ -32,14 +32,6 @@ def notify(msg):
     except Exception as e:
         print("خطأ في إرسال Telegram:", e)
 
-# ==== دوال مساعدة (دمجنا normalize_arabic هنا) ====
-def clean_text(text):
-    text = text.strip()
-    text = text.replace("ة", "ه")
-    if text.startswith("ال"):
-        text = text[2:]
-    return text
-
 def normalize_arabic(text):
     """تنظيف النصوص العربية للمطابقة الذكية (من الملف الثاني)"""
     if not text: return ""
