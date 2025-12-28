@@ -129,14 +129,14 @@ for doc in docs_list:
             page = browser.new_page()
 
             # تسجيل الدخول
-            page.goto("https://demo.stage.torod.co/ar/login")
+            page.goto("https://torod.co/ar/login")
             page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("kook53281@gmail.com")
             page.get_by_role("textbox", name="Password").fill("Abcd_0504989381")
             page.get_by_role("button", name="تسجيل دخول").click()
             page.wait_for_url("**/dashboard", timeout=60000)
 
             # الانتقال وإدخال البيانات
-            page.goto("https://demo.stage.torod.co/ar/settings/address")
+            page.goto("https://torod.co/ar/settings/address")
             page.get_by_role("link", name="+ عنوان جديد").click()
 
             page.get_by_role("textbox", name="اسم المستودع *").fill(store_name)
