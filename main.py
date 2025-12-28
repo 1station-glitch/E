@@ -128,50 +128,26 @@ for doc in docs:
             page.get_by_role("textbox", name="مسؤول الإتصال *").fill(receiver_name)
             page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("noon53281@gmail.com")
             page.get_by_placeholder("أدخل رقم الجوال").fill(receiver_phone)
-
-
+            
             # --- التعامل مع المدينة ---
-            match_success = False
             try:
                 # الضغط على خانة المدينة
                 page.locator("#select2-merchant_address_form_city-container").click()
                 page.wait_for_timeout(2000)
                 
-                # كتابة اسم المدينة في مربع البحث
-                page.locator(".select2-search__field").fill(city)
-                page.wait_for_timeout(3000)
+                # كتابة اسم المدينة
+                search_box = page.locator(".select2-search__field")
+                search_box.fill(city)
+                page.wait_for_timeout(2000)
                 
-                # انتظار ظهور قائمة الخيارات
-                page.wait_for_selector("li.select2-results__option", state="visible", timeout=10000)
+                # الضغط على Enter
+                search_box.press("Enter")
+                page.wait_for_timeout(1000)
                 
-                # جلب جميع الخيارات
-                options = page.locator("li.select2-results__option").all()
-                
-                # البحث عن المدينة مع المنطقة
-                target_norm = normalize_arabic(city_region)
-                for opt in options:
-                    opt_text = opt.inner_text()
-                    if target_norm in normalize_arabic(opt_text) or normalize_arabic(opt_text) in target_norm:
-                        opt.click()
-                        match_success = True
-                        print(f"✓ تم اختيار: {opt_text}")
-                        break
-                
-                # إذا ما لقى مطابقة، جرب بالمدينة فقط
-                if not match_success:
-                    city_norm = normalize_arabic(city)
-                    for opt in options:
-                        if city_norm in normalize_arabic(opt.inner_text()):
-                            opt.click()
-                            match_success = True
-                            print(f"✓ تم اختيار: {opt.inner_text()}")
-                            break
+                print(f"✓ تم اختيار المدينة: {city}")
                             
             except Exception as e:
                 print(f"خطأ في تحديد المدينة: {e}")
-
-            if not match_success:
-                print(f"⚠️ لم يتم العثور على مدينة مطابقة لـ: {city}")
                 
             # إكمال وتأكيد (Google Map والتفاصيل)
             page.locator("#merchant_address_form_google_map_toggle").uncheck()
