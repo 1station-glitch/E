@@ -138,72 +138,71 @@ for doc in docs:
             # ---------------------------------------------------------
             # 🏙️ كود اختيار المدينة (المطابقة الصارمة: مدينة + منطقة)
             # ---------------------------------------------------------
-            print(f"🔍 البحث عن: المدينة ({city}) | المنطقة ({region})")
+            # ---------------------------------------------------------
+            # 🏙️ كود اختيار المدينة (بحث دقيق: المدينة + المنطقة)
+            # ---------------------------------------------------------
+            print(f"🔍 جاري البحث عن المدينة: {city} | في منطقة: {region}")
 
-            search_attempts = get_variations(city)
-            city_found = False
-
-            for search_term in search_attempts:
-                print(f"   🔄 تجربة البحث بكلمة: {search_term}")
+            try:
+                # 1. فتح القائمة
+                page.locator("#select2-merchant_address_form_city-container").click(force=True)
                 
-                try:
-                    # فتح القائمة (نضغط على الكونتينر)
-                    page.locator("#select2-merchant_address_form_city-container").click(force=True)
-                    
-                    # مسح وكتابة الاسم ببطء
-                    page.locator(".select2-search__field").fill("") 
-                    page.locator(".select2-search__field").type(search_term, delay=100)
-                    
-                    print("   ⏳ انتظار 5 ثواني لتحميل النتائج...")
-                    page.wait_for_timeout(5000)
+                # 2. كتابة اسم المدينة فقط (كما هو من فاير بيس)
+                # نستخدم delay بسيط عشان الموقع يحس بالكتابة ويبدأ البحث
+                page.locator(".select2-search__field").fill("") 
+                page.locator(".select2-search__field").type(city, delay=100)
+                
+                print(f"   ⌨️ تمت كتابة: {city}.. وجاري انتظار النتائج")
+                page.wait_for_timeout(4000) # انتظار 4 ثواني للنتائج
 
-                    # جلب النتائج
-                    options = page.locator("li.select2-results__option").all()
+                # 3. قراءة النتائج الظاهرة
+                options = page.locator("li.select2-results__option").all()
+                
+                if not options:
+                    print("   ⚠️ لم تظهر أي نتائج بحث!")
+                    page.mouse.click(0, 0) # إغلاق القائمة
+                
+                else:
+                    found_exact_match = False
                     
-                    if not options:
-                        print("      ⚠️ القائمة فاضية، نجرب الاحتمال التالي.")
-                        page.mouse.click(0, 0) # إغلاق القائمة
-                        continue
+                    # تنظيف نصوص المقارنة (عشان الهمزات والتاء المربوطة ما تخرب البحث)
+                    target_city_norm = normalize_arabic(city)     # مثلا: جدة
+                    target_region_norm = normalize_arabic(region) # مثلا: منطقة مكة المكرمة
 
-                    # فحص النتائج
-                    target_city_norm = normalize_arabic(city)
-                    target_region_norm = normalize_arabic(region)
+                    print(f"   📋 النتائج المعروضة: {len(options)}")
 
                     for opt in options:
-                        opt_text = opt.inner_text()
-                        opt_norm = normalize_arabic(opt_text)
+                        opt_text = opt.inner_text()       # النص من الموقع: "جدة - منطقة مكة المكرمة"
+                        opt_norm = normalize_arabic(opt_text) 
 
-                        # الشرط: هل النص يحتوي على المدينة؟ وهل يحتوي على المنطقة؟
+                        # الشرط: هل اسم المدينة موجود؟ + هل اسم المنطقة موجود؟
+                        # نستخدم in للتأكد أن الكلمات جزء من النص
                         match_city = target_city_norm in opt_norm
                         match_region = target_region_norm in opt_norm
 
                         if match_city and match_region:
-                            print(f"      ✅ تطابق ممتاز (مدينة+منطقة): {opt_text}")
+                            print(f"      ✅ تم العثور على الخيار الصحيح: {opt_text}")
                             opt.click()
-                            city_found = True
+                            found_exact_match = True
                             break
-                        elif match_city:
-                            print(f"      👀 تطابق مدينة فقط '{opt_text}' (نبحث عن المنطقة '{region}').. تجاوز.")
+                        else:
+                            # طباعة للتحقق فقط (عشان تشوف ليش رفض الخيارات الثانية)
+                            pass 
 
-                    if city_found:
-                        break # تم الاختيار بنجاح
-                    
-                    # إغلاق القائمة للمحاولة التالية
-                    page.mouse.click(0, 0)
+                    if not found_exact_match:
+                        print(f"   ❌ لم نجد خيار يجمع بين '{city}' و '{region}' في القائمة.")
+                        # (اختياري) هنا ممكن تختار أول خيار يحتوي على اسم المدينة فقط كخطة بديلة
+                        # إذا تبغاه يختار أول خيار يطلع له فيه اسم المدينة فعل السطرين اللي تحت:
+                        # if len(options) > 0:
+                        #     options[0].click()
 
-                except Exception as e:
-                    print(f"      ❌ خطأ أثناء البحث: {e}")
-                    # محاولة إغلاق القائمة في حال حدوث خطأ
-                    try: page.mouse.click(0, 0)
-                    except: pass
-
-            if not city_found:
-                print(f"❌ فشل العثور على المدينة: {city} والمنطقة: {region}")
-                notify(f"❌ لم يتم العثور على المدينة: {city} - {region}")
-                # لن نضغط زر الحفظ حتى لا نسجل بيانات ناقصة، سنغلق المتصفح وننتقل للطلب التالي
-                browser.close()
-                continue # تخطي هذا الطلب
-
+            except Exception as e:
+                print(f"   ❌ خطأ في القائمة: {e}")
+                # محاولة إغلاق القائمة عند الخطأ
+                try: page.mouse.click(0, 0)
+                except: pass
+            
+            # ---------------------------------------------------------
             # ---------------------------------------------------------
 
             # إغلاق الخريطة وتكملة العنوان
