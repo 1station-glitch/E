@@ -129,64 +129,86 @@ for doc in docs:
             page.get_by_role("textbox", name="أدخل البريد الإلكتروني").fill("noon53281@gmail.com")
             page.get_by_placeholder("أدخل رقم الجوال").fill(receiver_phone)
 
-          
-            print(f"🔍 جاري البحث.. المدينة: {city} | المنطقة المطلوبة: {region}")
+          # ---------------------------------------------------------
+            # 🎯 كود اختيار المدينة (Playwright Select2)
+            # ---------------------------------------------------------
+            print(f"🔍 [مرحلة المدينة] جاري البحث عن: {city}")
 
             try:
+                # =========================================================
+                # 🛑 المحددات (Selectors)
+                # =========================================================
+                
+                # 1. زر الضغط (هذا هو الـ ID الخاص بـ City داخل الكلاس اللي انت ارسلته)
+                BTN_CLICK   = "#select2-merchant_address_form_city-container"
+                
+                # 2. خانة الكتابة (دائماً هذا الكلاس في Select2)
+                INPUT_FIELD = ".select2-search__field"
+                
+                # 3. صندوق النتائج (الـ ID اللي انت جبته)
+                RESULTS_BOX = "#select2-merchant_address_form_city-results"
+                
+                # =========================================================
+
                 # 1. فتح القائمة
-                page.locator("#select2-merchant_address_form_city-container").click(force=True)
-                
-                # 2. كتابة اسم المدينة وانتظار النتائج
-                page.locator(".select2-search__field").fill("")
-                # نكتب ببطء عشان البحث يشتغل صح
-                page.locator(".select2-search__field").type(city, delay=100)
-                
-                print("   ⏳ انتظار 5 ثواني (تحميل النتائج)...")
+                print(f"   👆 الضغط لفتح القائمة...")
+                # نستخدم force=True عشان يضغط حتى لو العنصر مغطى بحدود شفافة
+                page.locator(BTN_CLICK).click(force=True)
+
+                # 2. الكتابة
+                print(f"   ⌨️ كتابة المدينة: {city}")
+                page.locator(INPUT_FIELD).fill("") 
+                page.locator(INPUT_FIELD).type(city, delay=100)
+
+                # 3. الانتظار (5 ثواني)
+                print("   ⏳ انتظار 5 ثواني...")
                 page.wait_for_timeout(5000)
 
-                # 3. جلب جميع الخيارات الظاهرة
-                options = page.locator("li.select2-results__option").all()
+                # 4. اختيار النتيجة الصحيحة
+                results_container = page.locator(RESULTS_BOX)
+                options = results_container.locator("li").all()
                 
                 if not options:
-                    print(f"   ❌ القائمة فارغة! لا توجد نتائج لـ {city}")
-                    page.mouse.click(0, 0) # إغلاق القائمة
+                    print("   ⚠️ القائمة فارغة!")
                 else:
-                    # دالة تنظيف للمقارنة (عشان يتجاهل الفرق بين ة/هـ وأ/ا)
-                    def clean_str(t):
-                        return str(t).replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").replace("ي", "ى")
+                    found = False
+                    def clean(t): return str(t).replace("أ","ا").replace("إ","ا").replace("ة","ه").strip()
+                    target_city = clean(city)
+                    target_region = clean(region)
 
-                    target_region = clean_str(region) # المنطقة اللي نبيها
-                    found_match = False
+                    print(f"   📋 النتائج: {len(options)}")
 
-                    # --- المحاولة الأولى: البحث عن المنطقة ---
-                    print(f"   📋 النتائج المتاحة: {len(options)}")
-                    
                     for opt in options:
-                        opt_text = opt.inner_text()
-                        opt_clean = clean_str(opt_text)
-                        
-                        # هل اسم المنطقة موجود داخل هذا الخيار؟
-                        if target_region in opt_clean:
-                            print(f"      ✅ لقينا تطابق مع المنطقة: {opt_text}")
+                        txt = opt.inner_text()
+                        clean_txt = clean(txt)
+
+                        # الشرط: هل المدينة موجودة؟ وهل المنطقة موجودة؟
+                        if target_city in clean_txt and target_region in clean_txt:
+                            print(f"      ✅ لقينا الخيار الصح: {txt}")
                             opt.click()
-                            found_match = True
-                            break # خلاص لقيناه ووقفنا
+                            found = True
+                            break
                     
-                    # --- المحاولة الثانية: الاختيار العشوائي (إذا ما لقينا المنطقة) ---
-                    if not found_match:
-                        print(f"   ⚠️ لم نجد المنطقة '{region}' في النتائج.. سيتم الاختيار عشوائياً.")
-                        
-                        # اختيار واحد عشوائي من القائمة
-                        import random
-                        random_option = random.choice(options)
-                        print(f"      🎲 تم اختيار عشوائي: {random_option.inner_text()}")
-                        random_option.click()
+                    # إذا ما لقينا المنطقة، نختار المدينة فقط
+                    if not found:
+                        for opt in options:
+                            if target_city in clean(opt.inner_text()):
+                                print(f"      ⚠️ خيار بديل (مدينة فقط): {opt.inner_text()}")
+                                opt.click()
+                                found = True
+                                break
+                    
+                    # اختيار عشوائي للطوارئ
+                    if not found and len(options) > 0:
+                        print("      🎲 اختيار عشوائي.")
+                        options[0].click()
 
             except Exception as e:
-                print(f"   ❌ خطأ في القائمة: {e}")
+                print(f"   ❌ خطأ: {e}")
                 try: page.mouse.click(0, 0)
                 except: pass
             
+            # ---------------------------------------------------------
             # ---------------------------------------------------------
             
             # ---------------------------------------------------------
