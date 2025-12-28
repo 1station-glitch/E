@@ -81,7 +81,7 @@ for doc in docs:
     # ==== بدء Playwright ====
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)  # False لتشوف المتصفح أثناء التجربة
+            browser = p.chromium.launch(headless=true)  # False لتشوف المتصفح أثناء التجربة
             page = browser.new_page()
 
             # 1️⃣ تسجيل الدخول
