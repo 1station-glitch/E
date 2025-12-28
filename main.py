@@ -37,9 +37,9 @@ if not firebase_admin._apps:
         if IS_GITHUB:
             # في قيت هوب: نقرأ المفتاح من النصوص السرية (Secrets)
             # يجب أن تضيف سيكرت باسم FIREBASE_KEY_JSON يحتوي على محتوى الملف
-            json_str = os.getenv("FIREBASE_JSON")
+            json_str = os.getenv("FIREBASE_KEY_JSON")
             if not json_str:
-                raise ValueError("⚠️ لم يتم العثور على Secret باسم FIREBASE_JSON في إعدادات GitHub")
+                raise ValueError("⚠️ لم يتم العثور على Secret باسم FIREBASE_KEY_JSON في إعدادات GitHub")
             
             cred_dict = json.loads(json_str)
             cred = credentials.Certificate(cred_dict)
@@ -110,7 +110,16 @@ for doc in docs_list:
             used_codes.add(branch_code)
             break
 
-    notify(f"📦 [Bot] طلب جديد: {store_name}\n📍 {city} - {region}")
+   # تنسيق الرسالة
+    msg = (
+        f"🚨 متجر جديد: {store_name}\n"
+        f"📱 الرقم: {receiver_phone}\n"
+        f"📍 المدينة - المنطقة: {city} - {region}\n"
+        f"🏘️ الحي - الشارع: {district} - {street}"
+    )
+
+    # إرسال
+    notify(msg)
 
     try:
         with sync_playwright() as p:
@@ -183,11 +192,40 @@ for doc in docs_list:
             if page.locator("#merchant_address_form_google_map_toggle").is_checked():
                 page.locator("#merchant_address_form_google_map_toggle").uncheck()
             page.get_by_role("textbox", name="تفاصيل العنوان").fill(district_street)
+            
+            # 1. الضغط على زر الحفظ
+            print("   💾 جاري ضغط زر الحفظ...")
+            page.locator("#address_form_btn").click()
 
-            # حفظ
-            page.get_by_role("button", name="إرسال").click()
-            page.wait_for_timeout(4000)
+            try:
+                # 2. اللحظة الحاسمة: ننتظر اختفاء النافذة (Modal)
+                # state="hidden": يعني انتظر لين يختفي هذا العنصر
+                # timeout=5000: نعطيه مهلة 5 ثواني يختفي فيها
+                page.wait_for_selector("#exampleModal", state="hidden", timeout=5000)
+
+                # ✅ إذا وصلنا هنا، يعني النافذة اختفت (تمت الإضافة)
+                doc_ref.update({"status": "done"})
+                notify(f"✅ تم الاضافة\nالمتجر: {store_name}")
+                print("   ✅ النتيجة: تم الاضافة (اختفت النافذة).")
+
+            except:
+                # ❌ إذا صار Timeout والنافذة لسه موجودة (لم تتم الإضافة)
+                notify(f"❌ لم تتم الاضافة\nالمتجر: {store_name}")
+                print("   ❌ النتيجة: لم تتم الاضافة (النافذة ما زالت ظاهرة).")
+            
+            # إغلاق المتصفح استعداداً للطلب التالي
             browser.close()
+
+    except Exception as e:
+        # لو صار خطأ فني (كراش) قبل ما يوصل للزر
+        notify(f"❌ لم تتم الاضافة (خطأ فني): {e}")
+        print(f"Error: {e}")
+            
+
+    except Exception as e:
+        # لو صار خطأ فني (كراش) قبل ما يوصل للزر
+        notify(f"❌ لم تتم الاضافة (خطأ فني): {e}")
+        print(f"Error: {e}")
 
         # إنهاء
         doc_ref.update({"status": "done"})
