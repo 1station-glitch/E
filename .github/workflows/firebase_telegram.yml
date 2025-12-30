@@ -1,6 +1,9 @@
 name: Firebase → Telegram → Playwright Bot
 
 on:
+repository_dispatch:
+    types: [new_order_trigger]
+    
   workflow_dispatch:  # تشغيل يدوي
   schedule:
     - cron: '*/30 * * * *'  # تشغيل كل 30 دقيقة
