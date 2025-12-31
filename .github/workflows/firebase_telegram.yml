@@ -1,16 +1,21 @@
 name: Firebase → Telegram → Playwright Bot
 
 on:
-repository_dispatch:
+  # 1. عشان يشتغل عن طريق كلاود فلير (رابط الموقع)
+  repository_dispatch:
     types: [new_order_trigger]
-    
-  workflow_dispatch:  # تشغيل يدوي
+
+  # 2. عشان تقدر تشغله بضغط زر يدوي من داخل قيت هوب
+  workflow_dispatch:
+
+  # 3. عشان يشتغل تلقائياً كل 5 دقائق (كاحتياط)
   schedule:
-    - cron: '*/30 * * * *'  # تشغيل كل 30 دقيقة
+    - cron: '*/5 * * * *'
 
 jobs:
-  run-bot:
+  run_bot:
     runs-on: ubuntu-latest
+    # ... كمل باقي الكود زي ما هو ...
 
     steps:
       - uses: actions/checkout@v3
